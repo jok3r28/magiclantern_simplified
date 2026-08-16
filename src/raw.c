@@ -2618,7 +2618,15 @@ void raw_lv_request_bpp(int bpp)
     }
     else
     {
+        #ifdef CONFIG_200D
+        /*
+         * EOS 200D: _EngDrvOut() is a no-op in the 1.0.1 platform port.
+         * PACK32_MODE is a 16-bit control field; write it directly.
+         */
+        *(volatile uint16_t *) PACK32_MODE = (uint16_t) modes[bpp_index];
+        #else
         EngDrvOut(PACK32_MODE, modes[bpp_index]);
+        #endif
         raw_info.bits_per_pixel = bpp;
         raw_info.pitch = raw_info.width * raw_info.bits_per_pixel / 8;
         raw_info.frame_size = raw_info.pitch * raw_info.height;

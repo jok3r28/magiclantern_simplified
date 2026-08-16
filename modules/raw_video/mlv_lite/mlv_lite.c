@@ -1552,7 +1552,21 @@ int setup_buffers()
     /* discard old full-size buffers */
     fullsize_buffers[0] = fullsize_buffers[1] = 0;
 
-    if (fullres_buf_size > 20 * 1024 * 1024 - 1024 && !OUTPUT_COMPRESSION)
+    /*
+     * EOS 200D 1.0.1 lower-bit RAW:
+     * keep the Canon RAW producer on Canon's normal buffer.
+     * Alternating the lower-bit producer to an ML buffer produced the
+     * deterministic every-other-frame stale/repeated-frame failure.
+     */
+    int force_200d_lower_bit_single_buffer =
+        is_camera("200D", "1.0.1") && BPP < 14 && !OUTPUT_COMPRESSION;
+
+    if (force_200d_lower_bit_single_buffer)
+    {
+        printf("200D lower-bit: forcing Canon RAW single buffer.\n");
+        fullsize_buffers[0] = UNCACHEABLE(raw_info.buffer);
+    }
+    else if (fullres_buf_size > 20 * 1024 * 1024 - 1024 && !OUTPUT_COMPRESSION)
     {
         /* large buffers? assume single-buffering is safe for uncompressed output */
         printf("Using single buffering (check with Show EDMAC).\n");
@@ -2908,8 +2922,14 @@ unsigned int FAST raw_rec_vsync_cbr(unsigned int unused)
     if (!raw_lv_settings_still_valid()) { raw_recording_state = RAW_FINISHING; return 0; }
     if (buffer_full) return 0;
     
-    /* double-buffering */
-    raw_lv_redirect_edmac(fullsize_buffers[fullsize_buffer_pos % 2]);
+    /*
+     * With the 200D lower-bit single-buffer path, both logical buffers point
+     * at Canon's same RAW buffer. Re-redirecting EDMAC to that same address
+     * every VSYNC is redundant and was the remaining LiveView/cadence fault.
+     * Preserve stock redirect behavior whenever the buffers differ.
+     */
+    if (fullsize_buffers[0] != fullsize_buffers[1])
+        raw_lv_redirect_edmac(fullsize_buffers[fullsize_buffer_pos % 2]);
 
     /* advance to next buffer for the upcoming capture */
     int next_fullsize_buffer_pos = (fullsize_buffer_pos + 1) % 2;
