@@ -1575,7 +1575,16 @@ int setup_buffers()
     /* discard old full-size buffers */
     fullsize_buffers[0] = fullsize_buffers[1] = 0;
 
-    if (fullres_buf_size > 20 * 1024 * 1024 - 1024 && !OUTPUT_COMPRESSION)
+    int force_200d_lower_bit_single_buffer =
+        is_camera("200D", "1.0.1") && BPP < 14 && !OUTPUT_COMPRESSION;
+
+    if (force_200d_lower_bit_single_buffer)
+    {
+        /* Camera-proven C2/H2/H3 path: keep both logical sources on Canon's
+         * normal RAW buffer for uncompressed 10/12-bit recording. */
+        fullsize_buffers[0] = UNCACHEABLE(raw_info.buffer);
+    }
+    else if (fullres_buf_size > 20 * 1024 * 1024 - 1024 && !OUTPUT_COMPRESSION)
     {
         /* large buffers? assume single-buffering is safe for uncompressed output */
         printf("Using single buffering (check with Show EDMAC).\n");
@@ -2949,8 +2958,10 @@ unsigned int FAST raw_rec_vsync_cbr(unsigned int unused)
     if (!raw_lv_settings_still_valid()) { raw_recording_state = RAW_FINISHING; return 0; }
     if (buffer_full) return 0;
     
-    /* double-buffering */
-    raw_lv_redirect_edmac(fullsize_buffers[fullsize_buffer_pos % 2]);
+    /* Avoid a redundant RAW destination redirect when the 200D lower-bit path
+     * intentionally uses Canon's RAW buffer for both logical sources. */
+    if (fullsize_buffers[0] != fullsize_buffers[1])
+        raw_lv_redirect_edmac(fullsize_buffers[fullsize_buffer_pos % 2]);
 
     /* advance to next buffer for the upcoming capture */
     int next_fullsize_buffer_pos = (fullsize_buffer_pos + 1) % 2;
@@ -3084,7 +3095,13 @@ void init_mlv_chunk_headers(struct raw_info *raw_info)
         file_hdr[i].videoFrameCount = 0; //autodetect
         file_hdr[i].audioFrameCount = 0;
         int fps = fps_get_current_x1000();
-        if (fps == 0)
+        if (is_camera("200D", "1.0.1") && BPP < 14 && video_mode_fps == 24)
+        {
+            /* On this 200D path fps_get_current_x1000() can report the RAW EDMAC
+             * cadence multiple (71940) even though VIDF timestamps are 23.976. */
+            file_hdr[i].sourceFpsNom = 23976;
+        }
+        else if (fps == 0)
             file_hdr[i].sourceFpsNom = 1;
         else
             file_hdr[i].sourceFpsNom = fps;

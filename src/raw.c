@@ -2179,7 +2179,14 @@ int raw_lv_settings_still_valid()
     if (!lv_raw_enabled) return 0;
     int w, h;
     if (!raw_lv_get_resolution(&w, &h)) return 0;
+#if defined(CONFIG_200D)
+    /* EOS 200D lower-bit RAW: the non-slurp resolution decoder still assumes
+     * a 14-bit pitch.  H1/H2/H3 proved that rejecting this derived width stops
+     * otherwise-correct 10/12-bit recording.  Keep the physical height check. */
+    if (h != raw_info.height) return 0;
+#else
     if (w != raw_info.width || h != raw_info.height) return 0;
+#endif
     return 1;
 }
 #endif // CONFIG_RAW_LIVEVIEW

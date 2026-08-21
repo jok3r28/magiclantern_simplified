@@ -189,7 +189,9 @@ void _EngDrvOut(uint32_t reg, uint32_t value)
         extern uint32_t get_shamem_base_addr(void);
         uint32_t shamem_base_addr = get_shamem_base_addr();
         *(uint32_t *)(shamem_base_addr + (reg & 0xfffff)) = value;
-        *(uint32_t *)reg = value;
+        /* EOS 200D lower-bit RAW: keep Canon/ML shadow state 32-bit,
+         * but match the camera-proven PACK32 physical access width. */
+        *(volatile uint16_t *)reg = (uint16_t)value;
     }
     return;
 }
